@@ -9,6 +9,7 @@ import EditEvent from "../admin/EditEvent";
 import adminHome from "../admin/adminHome";
 import adminProfile from "../admin/adminProfile";
 import CategoriesManagement from "../admin/categoriesManagement";
+import addNewEvents from "../adminComponents/addNewEvents";
 
 let router = createBrowserRouter([
   {
@@ -50,6 +51,10 @@ let router = createBrowserRouter([
       {
         path: "/admin/adminProfile",
         Component: adminProfile,
+      },
+      {
+        path: "/admin/addNewEvents",
+        Component: addNewEvents,
       },
     ],
   },

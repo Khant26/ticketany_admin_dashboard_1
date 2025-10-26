@@ -426,19 +426,26 @@ function AddNewEvents() {
                 />
               </div>
 
-              {/* Hidden Category select (kept for backend compatibility) */}
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleInputChange}
-                className="hidden"
-              >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.category_name}
-                  </option>
-                ))}
-              </select>
+              {/* Category (visible selector) */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Category</label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                >
+                  {categories.length === 0 ? (
+                    <option value="">Loading categories...</option>
+                  ) : (
+                    categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.category_name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
 
               {/* Create button */}
               <div className="pt-2">

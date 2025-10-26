@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 function eventupload() {
@@ -32,6 +32,8 @@ function eventupload() {
   const IMAGE_SEPARATOR = "|||SEPARATOR|||";
 
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const dragIndex = useRef(null);
 
   // Fetch events and categories on component mount
   useEffect(() => {
@@ -181,8 +183,7 @@ function eventupload() {
 
     // Clear input if no files remain
     if (newFiles.length === 0) {
-      const fileInput = document.getElementById("image-input");
-      if (fileInput) fileInput.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -234,6 +235,36 @@ function eventupload() {
       img.src = URL.createObjectURL(file);
     });
   };
+
+  // Drag and drop reorder (from AddNewEvents design)
+  const handleDragStart = (index) => (e) => {
+    dragIndex.current = index;
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const handleDragOver = (index) => (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+  const handleDrop = (index) => (e) => {
+    e.preventDefault();
+    const from = dragIndex.current;
+    if (from === null || from === index) return;
+    const reorder = (arr) => {
+      const copy = [...arr];
+      const [moved] = copy.splice(from, 1);
+      copy.splice(index, 0, moved);
+      return copy;
+    };
+    setSelectedFiles((arr) => reorder(arr));
+    setPreviews((arr) => reorder(arr));
+    dragIndex.current = null;
+  };
+
+  // Derived for poster grid slots
+  const slotCount = useMemo(
+    () => Math.max(6, previews.length || 0),
+    [previews.length]
+  );
 
   // Convert empty strings to null for backend
   const toNullIfEmpty = (value) => {
@@ -402,240 +433,232 @@ function eventupload() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      {/* Event Creation Form */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-          Create New Event
-        </h2>
-
-        {/* Form Fields Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Event Name *
-            </label>
-            <input
-              type="text"
-              name="event_name"
-              value={formData.event_name}
-              onChange={handleInputChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter event name"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Location
-            </label>
-            <input
-              type="text"
-              name="event_location"
-              value={formData.event_location}
-              onChange={handleInputChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Event location"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Event Date
-            </label>
-            <input
-              type="text"
-              name="event_date"
-              value={formData.event_date}
-              onChange={handleInputChange}
-              placeholder="e.g., 2025-09-28 or Sep 28, 2025"
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Event Time
-            </label>
-            <input
-              type="text"
-              name="event_time"
-              value={formData.event_time}
-              onChange={handleInputChange}
-              placeholder="e.g., 18:30 or 6:30 PM"
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Sale Date
-            </label>
-            <input
-              type="text"
-              name="sale_date"
-              value={formData.sale_date}
-              onChange={handleInputChange}
-              placeholder="e.g., 2025-09-15"
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Ticket Price
-            </label>
-            <input
-              type="text"
-              name="ticket_price"
-              value={formData.ticket_price}
-              onChange={handleInputChange}
-              placeholder="e.g., Premium - 1000, Regular - 500"
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Category
-            </label>
-            <select
-              name="category"
-              value={formData.category}
-              onChange={handleInputChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {categories.length === 0 ? (
-                <option value="">Loading categories...</option>
-              ) : (
-                categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.category_name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-        </div>
-
-        {/* Multiple Image Upload Section */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Event Images ({selectedFiles.length} selected)
-          </label>
-          <input
-            id="image-input"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleFileSelect}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Select multiple images (max {MAX_FILES}, {MAX_SIZE_MB}MB each).
-            Images will be compressed automatically.
-          </p>
-        </div>
-
-        {/* Selected Files List */}
-        {selectedFiles.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">
-              Selected Files:
-            </h4>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {selectedFiles.map((file, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between bg-gray-50 p-3 rounded-md"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className="text-sm font-medium text-gray-900 truncate"
-                      title={file.name}
+      {/* Event Creation Form - replaced with AddNewEvents design */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-8">
+        <div className="grid grid-cols-12">
+          {/* Left: Posters area */}
+          <div className="col-span-12 md:col-span-5 p-4 sm:p-6 relative md:border-r md:pr-6 border-gray-200">
+            {/* Grid of slots */}
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: slotCount }).map((_, i) => {
+                const pv = previews[i];
+                return (
+                  <div key={i} className="flex flex-col items-start">
+                    <div
+                      draggable={!!pv}
+                      onDragStart={pv ? handleDragStart(i) : undefined}
+                      onDragOver={handleDragOver(i)}
+                      onDrop={handleDrop(i)}
+                      className={`relative w-full aspect-[3/4] ${
+                        pv
+                          ? "border border-gray-300"
+                          : "border-2 border-dashed border-gray-300"
+                      } rounded-md overflow-hidden bg-gray-50`}
                     >
-                      {truncateFileName(file.name)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(file.size)} • {file.type}
-                    </p>
+                      {pv ? (
+                        <>
+                          <img
+                            src={pv.url}
+                            alt={`poster-${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Delete button */}
+                          <button
+                            type="button"
+                            onClick={() => removeImage(i)}
+                            className="absolute top-1 left-1 bg-black/80 text-white rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-black"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                          {/* Drag hint */}
+                          <div className="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white">
+                            drag
+                          </div>
+                        </>
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center text-gray-400 text-xs"
+                          title="Empty slot"
+                        >
+                          Empty
+                        </div>
+                      )}
+                    </div>
+                    {/* Number below tile */}
+                    <div className="mt-2 w-full flex justify-start">
+                      <div className="w-6 h-6 rounded-full border border-gray-400 text-gray-700 text-xs flex items-center justify-center">
+                        {i + 1}
+                      </div>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeImage(index)}
-                    className="ml-3 text-red-600 hover:text-red-800 text-sm font-medium"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+
+            {/* Footer controls under grid */}
+            <div className="mt-6 flex items-center justify-between">
+              <div className="text-xs text-gray-600">
+                <p>Drag to move posters and</p>
+                <p>arrange display sequence</p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-50"
+                >
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-gray-900">
+                    <span className="text-gray-900 text-base leading-none">+</span>
+                  </span>
+                  <span className="text-sm">Add new poster</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  id="image-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Image Previews Grid */}
-        {previews.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">
-              Preview ({previews.length} images):
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {previews.map((preview, index) => (
-                <div key={index} className="relative group">
-                  <img
-                    src={preview.url}
-                    alt={`Preview ${index + 1}`}
-                    className="w-full h-32 object-cover rounded-md border-2 border-gray-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(index)}
-                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    ×
-                  </button>
-                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                    {index + 1}
-                  </div>
+          {/* Right: Form */}
+          <div className="col-span-12 md:col-span-7 p-4 sm:p-6">
+            <div className="space-y-4">
+              {/* Event name */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Event name</label>
+                <input
+                  type="text"
+                  name="event_name"
+                  value={formData.event_name}
+                  onChange={handleInputChange}
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Date */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Date</label>
+                <input
+                  type="text"
+                  name="event_date"
+                  value={formData.event_date}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 2025-09-28"
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Time */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Time</label>
+                <input
+                  type="text"
+                  name="event_time"
+                  value={formData.event_time}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 18:30"
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Location */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Location</label>
+                <input
+                  type="text"
+                  name="event_location"
+                  value={formData.event_location}
+                  onChange={handleInputChange}
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Sale Date */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Sale Date</label>
+                <input
+                  type="text"
+                  name="sale_date"
+                  value={formData.sale_date}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 2025-09-15"
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Price */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Price</label>
+                <input
+                  type="text"
+                  name="ticket_price"
+                  value={formData.ticket_price}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Premium - 1000, Regular - 500"
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                />
+              </div>
+
+              {/* Category (visible selector) */}
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-gray-700">Category</label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="flex-1 h-10 rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-[#f28fa5]"
+                >
+                  {categories.length === 0 ? (
+                    <option value="">Loading categories...</option>
+                  ) : (
+                    categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.category_name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* Create button */}
+              <div className="pt-2">
+                <button
+                  onClick={uploadEvent}
+                  disabled={!formData.event_name.trim() || loading}
+                  className={`w-full h-11 rounded-md text-white font-medium transition ${
+                    !formData.event_name.trim() || loading
+                      ? "bg-[#f28fa5]/40 cursor-not-allowed"
+                      : "bg-[#ee6786ff] hover:bg-[#ee6786ff]/90"
+                  }`}
+                >
+                  {loading ? "Creating Event..." : "Create Event"}
+                </button>
+              </div>
+
+              {/* Status */}
+              {uploadStatus && (
+                <div
+                  className={`text-sm mt-2 p-2 rounded ${
+                    uploadStatus.includes("✅")
+                      ? "bg-green-100 text-green-800"
+                      : uploadStatus.includes("❌")
+                      ? "bg-red-100 text-red-800"
+                      : "bg-yellow-100 text-yellow-800"
+                  }`}
+                >
+                  {uploadStatus}
                 </div>
-              ))}
+              )}
             </div>
           </div>
-        )}
-
-        {/* Submit Button */}
-        <button
-          onClick={uploadEvent}
-          disabled={!formData.event_name.trim() || loading}
-          className={`w-full py-3 px-6 rounded-md font-medium transition-colors ${
-            !formData.event_name.trim() || loading
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-blue-600 text-white hover:bg-blue-700"
-          }`}
-        >
-          {loading
-            ? "Creating Event..."
-            : `Create Event${
-                selectedFiles.length > 0
-                  ? ` with ${selectedFiles.length} image(s)`
-                  : ""
-              }`}
-        </button>
-
-        {/* Status Message */}
-        {uploadStatus && (
-          <div
-            className={`mt-4 p-3 rounded-md ${
-              uploadStatus.includes("✅") || uploadStatus.includes("success")
-                ? "bg-green-100 text-green-800"
-                : uploadStatus.includes("❌")
-                ? "bg-red-100 text-red-800"
-                : "bg-yellow-100 text-yellow-800"
-            }`}
-          >
-            {uploadStatus}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Events Display Section */}
@@ -755,7 +778,7 @@ function eventupload() {
                     {/* Action Buttons */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => navigate(`/admin/editevent/${event.id}`)}
+                        onClick={() => navigate(`/admin/events/${event.id}/edit`)}
                         className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors"
                       >
                         View Details
