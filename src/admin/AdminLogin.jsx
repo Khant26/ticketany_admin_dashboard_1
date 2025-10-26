@@ -38,21 +38,46 @@ function AdminLogin() {
       const data = await response.json();
 
       if (response.ok) {
-        // Check if user is a super admin
-        if (!data.is_superuser && !data.is_staff) {
+        // Normalize token and user payload
+        const token = data.access_token || data.token || data.access || null;
+
+        // Try to read flags from response; if missing, fetch current user with token
+        let userInfo = data.user ?? data;
+
+        if (
+          (userInfo.is_superuser === undefined && userInfo.is_staff === undefined) &&
+          token
+        ) {
+          try {
+            const meRes = await fetch('http://127.0.0.1:8000/api/auth/me/', {
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+            });
+            if (meRes.ok) {
+              userInfo = await meRes.json();
+            }
+          } catch (_) {
+            // ignore; fallback to existing payload
+          }
+        }
+
+        // Require superuser (aligns with the UI text)
+        const isSuperAdmin = userInfo?.is_superuser === true;
+
+        if (!isSuperAdmin) {
           setError('Access denied. Super admin privileges required.');
           return;
         }
 
-        // Store access token for future requests
-        if (data.access_token || data.token || data.access) {
-          const token = data.access_token || data.token || data.access;
+        // Store token and user data
+        if (token) {
           localStorage.setItem('access_token', token);
-          localStorage.setItem('user_data', JSON.stringify(data));
-          localStorage.setItem('is_admin', 'true');
         }
+        localStorage.setItem('user_data', JSON.stringify(userInfo));
+        localStorage.setItem('is_admin', 'true');
 
-        // Redirect to admin dashboard
         navigate('/admin');
       } else {
         setError(data.error || data.detail || data.message || 'Authentication failed');
