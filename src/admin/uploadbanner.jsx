@@ -42,7 +42,7 @@ function UploadBanner() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedImage) return setError("Please select an image");
+    if (!selectedImage) return setError("Please select lee pll an image");
     if (!title.trim()) return setError("Please enter a banner title");
 
     try {
