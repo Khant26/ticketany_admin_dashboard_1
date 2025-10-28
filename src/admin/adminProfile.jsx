@@ -16,6 +16,10 @@ function adminProfile() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Orders currently being deleted (ids)
+  const [deletingIds, setDeletingIds] = useState([]);
+  const [deletingCustomers, setDeletingCustomers] = useState([]);
+
   // Modal state (View on Customers)
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerFocus, setCustomerFocus] = useState(null);
@@ -26,7 +30,11 @@ function adminProfile() {
 
   useEffect(() => {
     const el = tabRefs.current[activeTab];
-    if (el) setUnderlineStyle({ width: `${el.offsetWidth}px`, left: `${el.offsetLeft}px` });
+    if (el)
+      setUnderlineStyle({
+        width: `${el.offsetWidth}px`,
+        left: `${el.offsetLeft}px`,
+      });
   }, [activeTab]);
 
   const API_BASE_URL = "http://127.0.0.1:8000";
@@ -36,7 +44,11 @@ function adminProfile() {
     if (typeof value === "number") return value;
     if (typeof value === "string") {
       const m = value.match(/(\d+)(?!.*\d)/);
-      return m ? Number(m[1]) : Number.isFinite(Number(value)) ? Number(value) : null;
+      return m
+        ? Number(m[1])
+        : Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
     }
     if (typeof value === "object") {
       if (typeof value.id === "number") return value.id;
@@ -92,9 +104,24 @@ function adminProfile() {
           parseMaybeJson(eventsRes),
         ]);
 
-        if (!ordersRes.ok) throw new Error(typeof ordersRaw === "string" ? ordersRaw : JSON.stringify(ordersRaw));
-        if (!ticketsRes.ok) throw new Error(typeof ticketsRaw === "string" ? ticketsRaw : JSON.stringify(ticketsRaw));
-        if (!eventsRes.ok) throw new Error(typeof eventsRaw === "string" ? eventsRaw : JSON.stringify(eventsRaw));
+        if (!ordersRes.ok)
+          throw new Error(
+            typeof ordersRaw === "string"
+              ? ordersRaw
+              : JSON.stringify(ordersRaw)
+          );
+        if (!ticketsRes.ok)
+          throw new Error(
+            typeof ticketsRaw === "string"
+              ? ticketsRaw
+              : JSON.stringify(ticketsRaw)
+          );
+        if (!eventsRes.ok)
+          throw new Error(
+            typeof eventsRaw === "string"
+              ? eventsRaw
+              : JSON.stringify(eventsRaw)
+          );
 
         setOrders(toArray(ordersRaw));
         setTickets(toArray(ticketsRaw));
@@ -166,6 +193,92 @@ function adminProfile() {
 
   const getOrderCustomerId = (o) => normalizeId(o?.customer);
 
+  // Delete an order by id (calls backend and removes from local state)
+  const deleteOrder = async (orderId) => {
+    const id = Number(orderId);
+    if (!id) return alert("Invalid order id");
+    if (!confirm(`Delete order #${id}? This cannot be undone.`)) return;
+
+    // avoid duplicate deletes
+    if (deletingIds.includes(id)) return;
+    setDeletingIds((s) => [...s, id]);
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const headers = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/orders/${id}/`, {
+        method: "DELETE",
+        headers,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Failed to delete order ${id}`);
+      }
+
+      // Remove order and its tickets from local state
+      setOrders((prev) => prev.filter((o) => normalizeId(o?.id) !== id));
+      setTickets((prev) => prev.filter((t) => normalizeId(t?.order) !== id));
+    } catch (e) {
+      console.error(e);
+      alert(`Delete failed: ${e?.message || e}`);
+    } finally {
+      setDeletingIds((s) => s.filter((x) => x !== id));
+    }
+  };
+
+  const deleteCustomer = async (customerId) => {
+    const id = Number(customerId);
+    if (!id) return alert("Invalid customer id");
+    if (!confirm(`Delete customer #${id}? This will remove their account.`))
+      return;
+
+    // avoid duplicate deletes
+    if (deletingCustomers.includes(id)) return;
+    setDeletingCustomers((s) => [...s, id]);
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const headers = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/customers/${id}/`, {
+        method: "DELETE",
+        headers,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Failed to delete customer ${id}`);
+      }
+
+      // Remove customer from local state
+      setUsers((prev) => prev.filter((u) => normalizeId(u?.id) !== id));
+
+      // Optionally remove their orders and tickets
+      setOrders((prev) => prev.filter((o) => normalizeId(o?.customer) !== id));
+      setTickets((prev) =>
+        prev.filter((t) => {
+          const order = orders.find(
+            (o) => normalizeId(o?.id) === normalizeId(t?.order)
+          );
+          return order && normalizeId(order?.customer) !== id;
+        })
+      );
+    } catch (e) {
+      console.error(e);
+      alert(`Customer delete failed: ${e?.message || e}`);
+    } finally {
+      setDeletingCustomers((s) => s.filter((x) => x !== id));
+    }
+  };
+
   // Build quick lookups
   const ticketsByOrder = useMemo(() => {
     return tickets.reduce((acc, t) => {
@@ -184,7 +297,14 @@ function adminProfile() {
     orders.forEach((o) => {
       const cid = getOrderCustomerId(o);
       if (!cid) return;
-      if (!counts.has(cid)) counts.set(cid, { pending: 0, paid: 0, received: 0, cancelled: 0, total: 0 });
+      if (!counts.has(cid))
+        counts.set(cid, {
+          pending: 0,
+          paid: 0,
+          received: 0,
+          cancelled: 0,
+          total: 0,
+        });
       const group = counts.get(cid);
       const ts = ticketsByOrder[o.id] || [];
       ts.forEach((t) => {
@@ -200,8 +320,15 @@ function adminProfile() {
     // Render rows for every customer from /api/customers/
     return (users || []).map((u) => {
       const customerId = normalizeId(u?.id);
-      const email = (u?.email || u?.name || u?.username || "").toString() || "—";
-      const c = (customerId != null && counts.get(customerId)) || { pending: 0, paid: 0, received: 0, cancelled: 0, total: 0 };
+      const email =
+        (u?.email || u?.name || u?.username || "").toString() || "—";
+      const c = (customerId != null && counts.get(customerId)) || {
+        pending: 0,
+        paid: 0,
+        received: 0,
+        cancelled: 0,
+        total: 0,
+      };
       return { customerId, email, ...c };
     });
   }, [orders, ticketsByOrder, users]);
@@ -218,7 +345,7 @@ function adminProfile() {
         rows.push({
           orderId: oid,
           eventName: ev?.event_name || ev?.name || "Event",
-          facebookName: t?.facebook_name || "—",
+          passportName: t?.passport_name || "—",
           memberCode: t?.member_code || "—",
           priorityDate: t?.priority_date || "",
           price: getTicketPrice(t),
@@ -236,12 +363,13 @@ function adminProfile() {
     tickets.forEach((t) => {
       const oid = normalizeId(t?.order);
       const order = orders.find((o) => normalizeId(o?.id) === oid);
-      const eid = getTicketEventId(t) || (order ? getOrderEventId(order) : null);
+      const eid =
+        getTicketEventId(t) || (order ? getOrderEventId(order) : null);
       if (!eid) return;
       if (!map.has(eid)) map.set(eid, []);
       map.get(eid).push({
         orderId: oid,
-        facebookName: t?.facebook_name || "—",
+        passportName: t?.passport_name || "—",
         memberCode: t?.member_code || "—",
         price: getTicketPrice(t),
         status: t?.status || "Pending",
@@ -268,7 +396,9 @@ function adminProfile() {
     if (!showCustomerModal || !customerFocus) return null;
     const { customerId } = customerFocus;
     // Flatten all tickets for this customer
-    const myOrderIds = orders.filter((o) => getOrderCustomerId(o) === customerId).map((o) => o.id);
+    const myOrderIds = orders
+      .filter((o) => getOrderCustomerId(o) === customerId)
+      .map((o) => o.id);
     const myTickets = myOrderIds.flatMap((oid) => ticketsByOrder[oid] || []);
     const nameOrEmail =
       usersById.get(customerId)?.email ||
@@ -281,22 +411,54 @@ function adminProfile() {
         <div className="bg-white rounded-lg shadow-2xl p-6 sm:p-8 w-full max-w-3xl">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold">Customer: {nameOrEmail}</h3>
-            <button onClick={() => setShowCustomerModal(false)} className="text-2xl leading-none">×</button>
+            <button
+              onClick={() => setShowCustomerModal(false)}
+              className="text-2xl leading-none"
+            >
+              ×
+            </button>
           </div>
           <div className="space-y-2 max-h-[60vh] overflow-auto">
-            {myTickets.length === 0 && <div className="text-gray-500">No tickets.</div>}
+            {myTickets.length === 0 && (
+              <div className="text-gray-500">No tickets.</div>
+            )}
             {myTickets.map((t, i) => (
-              <div key={i} className="grid grid-cols-6 gap-3 items-center border-b py-2 text-sm">
-                <div className="col-span-1 font-medium">#{normalizeId(t?.order) || "-"}</div>
-                <div className="col-span-2 truncate">{t?.facebook_name || "—"}</div>
+              <div
+                key={i}
+                className="grid grid-cols-6 gap-3 items-center border-b py-2 text-sm"
+              >
+                <div className="col-span-1 font-medium">
+                  #{normalizeId(t?.order) || "-"}
+                </div>
+                <div className="col-span-2 truncate">
+                  {t?.passport_name || "—"}
+                </div>
                 <div className="col-span-1">{t?.member_code || "—"}</div>
                 <div className="col-span-1">{t?.priority_date || "—"}</div>
-                <div className="col-span-1 text-right">{getTicketPrice(t) ? `${getTicketPrice(t)} THB` : "—"}</div>
+                <div className="col-span-1 text-right flex items-center justify-end gap-2">
+                  <div>
+                    {getTicketPrice(t) ? `${getTicketPrice(t)} THB` : "—"}
+                  </div>
+                  <button
+                    onClick={() => deleteOrder(normalizeId(t?.order))}
+                    disabled={deletingIds.includes(
+                      Number(normalizeId(t?.order))
+                    )}
+                    className="text-red-600 hover:text-red-800 px-2 py-1 text-sm rounded"
+                  >
+                    {deletingIds.includes(Number(normalizeId(t?.order)))
+                      ? "Deleting..."
+                      : "Delete"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
           <div className="mt-4 text-right">
-            <button className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setShowCustomerModal(false)}>
+            <button
+              className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200"
+              onClick={() => setShowCustomerModal(false)}
+            >
               Close
             </button>
           </div>
@@ -337,7 +499,9 @@ function adminProfile() {
                 ref={(el) => (tabRefs.current[t.key] = el)}
                 onClick={() => setActiveTab(t.key)}
                 className={`relative pb-4 px-1 font-medium text-2xl transition-colors ${
-                  activeTab === t.key ? "text-gray-700" : "text-gray-700 hover:text-gray-900"
+                  activeTab === t.key
+                    ? "text-gray-700"
+                    : "text-gray-700 hover:text-gray-900"
                 }`}
               >
                 {t.label}
@@ -353,8 +517,12 @@ function adminProfile() {
 
         {/* Content */}
         <div className="bg-white shadow-sm pt-1 px-3 sm:px-4 pb-6">
-          {loading && <div className="text-center py-12 text-gray-500">Loading…</div>}
-          {error && <div className="text-center py-12 text-red-600">{error}</div>}
+          {loading && (
+            <div className="text-center py-12 text-gray-500">Loading…</div>
+          )}
+          {error && (
+            <div className="text-center py-12 text-red-600">{error}</div>
+          )}
 
           {!loading && !error && activeTab === "customers" && (
             <div className="space-y-3 mt-4">
@@ -370,13 +538,16 @@ function adminProfile() {
               <div className="border-b" />
               {/* Rows */}
               {customersAgg.map((c) => (
-                <div key={c.customerId} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center px-4 py-3">
+                <div
+                  key={c.customerId}
+                  className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center px-4 py-3"
+                >
                   <div className="font-medium">#{c.customerId}</div>
                   <div className="truncate">{c.email || "—"}</div>
                   <div className="text-orange-600">{c.pending}</div>
                   <div className="text-green-600">{c.paid}</div>
                   <div className="text-pink-600">{c.received}</div>
-                  <div className="md:text-right">
+                  <div className="md:text-right flex space-x-2">
                     <button
                       onClick={() => {
                         setCustomerFocus({ customerId: c.customerId });
@@ -386,10 +557,25 @@ function adminProfile() {
                     >
                       View
                     </button>
+                    <button
+                      onClick={() => deleteCustomer(c.customerId)}
+                      disabled={deletingCustomers.includes(
+                        Number(c.customerId)
+                      )}
+                      className="px-3 py-1 rounded border border-red-500 text-red-600 hover:bg-red-50"
+                    >
+                      {deletingCustomers.includes(Number(c.customerId))
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
                   </div>
                 </div>
               ))}
-              {customersAgg.length === 0 && <div className="text-center text-gray-500 py-10">No customers.</div>}
+              {customersAgg.length === 0 && (
+                <div className="text-center text-gray-500 py-10">
+                  No customers.
+                </div>
+              )}
             </div>
           )}
 
@@ -398,7 +584,7 @@ function adminProfile() {
               <div className="hidden md:grid grid-cols-7 gap-4 px-4 py-3 text-gray-700 font-semibold">
                 <div>ID</div>
                 <div>Event</div>
-                <div>Facebook Name</div>
+                <div>Passport Name</div>
                 <div>Member Code</div>
                 <div>Priority Date</div>
                 <div className="text-right">Price</div>
@@ -406,51 +592,98 @@ function adminProfile() {
               </div>
               <div className="border-b" />
               {idRows.map((row, idx) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-7 gap-4 items-center px-4 py-3">
+                <div
+                  key={idx}
+                  className="grid grid-cols-1 md:grid-cols-7 gap-4 items-center px-4 py-3"
+                >
                   <div className="font-medium">#{row.orderId}</div>
                   <div className="truncate">{row.eventName}</div>
-                  <div className="truncate">{row.facebookName}</div>
+                  <div className="truncate">{row.passportName}</div>
                   <div>{row.memberCode}</div>
                   <div className="truncate">{row.priorityDate || "—"}</div>
-                  <div className="text-right">{row.price ? `${row.price} THB` : "—"}</div>
                   <div className="text-right">
+                    {row.price ? `${row.price} THB` : "—"}
+                  </div>
+                  <div className="text-right flex items-center justify-end gap-2">
                     <span className={statusChip(row.status)}>{row.status}</span>
+                    <button
+                      onClick={() => deleteOrder(row.orderId)}
+                      disabled={deletingIds.includes(Number(row.orderId))}
+                      className="text-red-600 hover:text-red-800 px-2 py-1 text-sm rounded"
+                    >
+                      {deletingIds.includes(Number(row.orderId))
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
                   </div>
                 </div>
               ))}
-              {idRows.length === 0 && <div className="text-center text-gray-500 py-10">No records.</div>}
+              {idRows.length === 0 && (
+                <div className="text-center text-gray-500 py-10">
+                  No records.
+                </div>
+              )}
             </div>
           )}
 
           {!loading && !error && activeTab === "events" && (
             <div className="space-y-8 mt-6">
               {eventsAgg.map((block) => (
-                <div key={block.eventId} className="border border-gray-200 rounded-lg">
-                  <div className="px-4 py-3 font-semibold text-lg">{block.eventName}</div>
+                <div
+                  key={block.eventId}
+                  className="border border-gray-200 rounded-lg"
+                >
+                  <div className="px-4 py-3 font-semibold text-lg">
+                    {block.eventName}
+                  </div>
                   <div className="border-t">
                     <div className="hidden md:grid grid-cols-6 gap-4 px-4 py-3 text-gray-700 font-semibold">
                       <div>ID</div>
-                      <div>Facebook Name</div>
+                      <div>Passport Name</div>
                       <div>Member Code</div>
                       <div className="text-right">Price</div>
                       <div className="col-span-2 text-right">Status</div>
                     </div>
                     {block.rows.map((r, i) => (
-                      <div key={i} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center px-4 py-3 border-t">
+                      <div
+                        key={i}
+                        className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center px-4 py-3 border-t"
+                      >
                         <div className="font-medium">#{r.orderId}</div>
-                        <div className="truncate">{r.facebookName}</div>
+                        <div className="truncate">{r.passportName}</div>
                         <div>{r.memberCode}</div>
-                        <div className="text-right">{r.price ? `${r.price} THB` : "—"}</div>
-                        <div className="md:col-span-2 text-right">
-                          <span className={statusChip(r.status)}>{r.status}</span>
+                        <div className="text-right">
+                          {r.price ? `${r.price} THB` : "—"}
+                        </div>
+                        <div className="md:col-span-2 text-right flex items-center justify-end gap-2">
+                          <span className={statusChip(r.status)}>
+                            {r.status}
+                          </span>
+                          <button
+                            onClick={() => deleteOrder(r.orderId)}
+                            disabled={deletingIds.includes(Number(r.orderId))}
+                            className="text-red-600 hover:text-red-800 px-2 py-1 text-sm rounded"
+                          >
+                            {deletingIds.includes(Number(r.orderId))
+                              ? "Deleting..."
+                              : "Delete"}
+                          </button>
                         </div>
                       </div>
                     ))}
-                    {block.rows.length === 0 && <div className="px-4 py-6 text-gray-500">No orders for this event.</div>}
+                    {block.rows.length === 0 && (
+                      <div className="px-4 py-6 text-gray-500">
+                        No orders for this event.
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
-              {eventsAgg.length === 0 && <div className="text-center text-gray-500 py-10">No events.</div>}
+              {eventsAgg.length === 0 && (
+                <div className="text-center text-gray-500 py-10">
+                  No events.
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import AdminBanner from "../adminComponents/adminBanner";
 import axios from "axios";
 
 function UploadBanner() {
+  
   const [banners, setBanners] = useState([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -42,7 +44,7 @@ function UploadBanner() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedImage) return setError("Please select lee pll an image");
+    if (!selectedImage) return setError("Please select an image");
     if (!title.trim()) return setError("Please enter a banner title");
 
     try {
@@ -134,6 +136,9 @@ function UploadBanner() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <div className="mx-auto mb-5 sm:mb-10 flex justify-center">
+          <AdminBanner />
+        </div>
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Upload Form */}
         <div className="bg-white shadow-md rounded-xl p-6 border border-gray-200">
